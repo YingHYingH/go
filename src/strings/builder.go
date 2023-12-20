@@ -29,6 +29,11 @@ func noescape(p unsafe.Pointer) unsafe.Pointer {
 	return unsafe.Pointer(x ^ 0)
 }
 
+// 如果允许复制并使用Builder，会发生以下问题：原始Builder和复制的Builder都持有指向相同底层数组的切片。
+// 当其中一个Builder因为扩容改变了底层数组的同时，另一个Builder仍然指向旧的底层数组。
+// 这就导致了两个看似同步却实际上异步的Builder，并且他们会互相干扰，造成数据混乱和不一致。
+// 出于安全性和一致性的考虑，Go标准库决定禁止strings.Builder的复制后使用。
+// 因此，strings.Builder在创建时会记录自身的地址信息在addr字段中，然后在每次调用的时候验证b.addr是否等于b，如果不等就说明Builder的值被复制过，此时就会抛出错误提示。
 func (b *Builder) copyCheck() {
 	if b.addr == nil {
 		// This hack works around a failing of Go's escape analysis
@@ -44,6 +49,8 @@ func (b *Builder) copyCheck() {
 
 // String returns the accumulated string.
 func (b *Builder) String() string {
+	// 可以将任何类型的指针转换为 unsafe.Pointer，然后再将其转换为任何其它类型的指针
+	// 通过unsafe.Pointer可以避免一些类型转换或复制开销，从而提升程序性能
 	return *(*string)(unsafe.Pointer(&b.buf))
 }
 
